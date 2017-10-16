@@ -16,6 +16,7 @@ module Duckling.Rules.AR
 import Duckling.Dimensions.Types
 import qualified Duckling.Numeral.AR.Rules as Numeral
 import qualified Duckling.Ordinal.AR.Rules as Ordinal
+import qualified Duckling.Temperature.AR.Rules as Temperature
 import Duckling.Types
 
 rules :: Some Dimension -> [Rule]
@@ -28,7 +29,7 @@ rules (This Ordinal) = Ordinal.rules
 rules (This PhoneNumber) = []
 rules (This Quantity) = []
 rules (This RegexMatch) = []
-rules (This Temperature) = []
+rules (This Temperature) = Temperature.rules
 rules (This Time) = []
 rules (This TimeGrain) = []
 rules (This Url) = []
