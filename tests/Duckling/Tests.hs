@@ -22,7 +22,4 @@ import qualified Duckling.Engine.Tests as Engine
 
 tests :: TestTree
 tests = testGroup "Duckling Tests"
-  [ Api.tests
-  , Dimensions.tests
-  , Engine.tests
-  ]
+  [ Dimensions.tests ]

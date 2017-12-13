@@ -68,7 +68,7 @@ makeCorpusTest targets (context, xs) = testCase "Corpus Tests" $ mapM_ check xs
         (token:_) -> do
           assertEqual ("don't fully match " ++ show input)
             (Range 0 (Text.length input)) (range token)
-          assertBool ("don't pass predicate on " ++ show input) $
+          assertBool ("don't pass predicate on " ++ show input ++ show token) $
             predicate context token
 
 makeNegativeCorpusTest :: [Some Dimension] -> NegativeCorpus -> TestTree

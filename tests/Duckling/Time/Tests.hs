@@ -48,25 +48,6 @@ import qualified Duckling.Time.ZH.Tests as ZH
 tests :: TestTree
 tests = testGroup "Time Tests"
   [ AR.tests
-  , DA.tests
-  , DE.tests
-  , EN.tests
-  , ES.tests
-  , FR.tests
-  , GA.tests
-  , HR.tests
-  , HE.tests
-  , HU.tests
-  , IT.tests
-  , KO.tests
-  , NB.tests
-  , NL.tests
-  , PL.tests
-  , PT.tests
-  , RO.tests
-  , SV.tests
-  , VI.tests
-  , ZH.tests
   , timeFormatTest
   , timeIntersectTest
   ]

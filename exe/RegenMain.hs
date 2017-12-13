@@ -8,6 +8,7 @@
 
 import Prelude
 import Duckling.Ranking.Generate
+import Duckling.Locale
 
 main :: IO ()
-main = regenAllClassifiers
+main = regenClassifiers (makeLocale AR Nothing)
