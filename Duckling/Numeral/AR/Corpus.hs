@@ -14,13 +14,13 @@ module Duckling.Numeral.AR.Corpus
 import Prelude
 import Data.String
 
-import Duckling.Lang
+import Duckling.Locale
 import Duckling.Numeral.Types
 import Duckling.Resolve
 import Duckling.Testing.Types
 
 corpus :: Corpus
-corpus = (testContext {lang = AR}, allExamples)
+corpus = (testContext {locale = makeLocale AR Nothing}, allExamples)
 
 allExamples :: [Example]
 allExamples = concat
@@ -87,6 +87,10 @@ allExamples = concat
   , examples (NumeralValue 26)
              [ "ستة و عشرون"
              , "26"
+             ]
+  , examples (NumeralValue 40)
+             [ "اربعون"
+             , "أربعين"
              ]
   , examples (NumeralValue 1.1)
              [ "1.1"

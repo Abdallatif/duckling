@@ -7,26 +7,27 @@
 
 
 {-# LANGUAGE GADTs #-}
+{-# LANGUAGE NoRebindableSyntax #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Duckling.Numeral.NL.Rules
-  ( rules ) where
+  ( rules
+  ) where
 
-import Control.Monad (join)
 import Data.HashMap.Strict (HashMap)
-import qualified Data.HashMap.Strict as HashMap
 import Data.Maybe
-import Data.Text (Text)
-import qualified Data.Text as Text
-import Prelude
 import Data.String
+import Data.Text (Text)
+import Prelude
+import qualified Data.HashMap.Strict as HashMap
+import qualified Data.Text as Text
 
 import Duckling.Dimensions.Types
 import Duckling.Numeral.Helpers
 import Duckling.Numeral.Types (NumeralData (..))
-import qualified Duckling.Numeral.Types as TNumeral
 import Duckling.Regex.Types
 import Duckling.Types
+import qualified Duckling.Numeral.Types as TNumeral
 
 ruleNumeralsPrefixWithNegativeOrMinus :: Rule
 ruleNumeralsPrefixWithNegativeOrMinus = Rule
@@ -79,9 +80,7 @@ ruleDecimalWithThousandsSeparator = Rule
     ]
   , prod = \tokens -> case tokens of
       (Token RegexMatch (GroupMatch (match:_)):
-       _) -> let dot = Text.singleton '.'
-                 comma = Text.singleton ','
-                 fmt = Text.replace comma dot $ Text.replace dot Text.empty match
+       _) -> let fmt = Text.replace "," "." $ Text.replace "." Text.empty match
         in parseDouble fmt >>= double
       _ -> Nothing
   }
@@ -98,6 +97,7 @@ ruleDecimalNumeral = Rule
       _ -> Nothing
   }
 
+-- TODO: Single-word composition (#110)
 ruleInteger3 :: Rule
 ruleInteger3 = Rule
   { name = "integer ([2-9][1-9])"
@@ -205,6 +205,15 @@ ruleDozen = Rule
   , prod = \_ -> integer 12 >>= withGrain 1
   }
 
+ruleGross :: Rule
+ruleGross = Rule
+  { name = "gros"
+  , pattern =
+    [ regex "gros"
+    ]
+  , prod = \_ -> integer 144 >>= withGrain 1
+  }
+
 zeroNineteenMap :: HashMap Text Integer
 zeroNineteenMap = HashMap.fromList
   [ ("niks", 0)
@@ -274,6 +283,7 @@ rules =
   , ruleDecimalNumeral
   , ruleDecimalWithThousandsSeparator
   , ruleDozen
+  , ruleGross
   , ruleFew
   , ruleInteger
   , ruleInteger2

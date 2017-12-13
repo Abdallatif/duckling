@@ -15,17 +15,20 @@ module Duckling.Time.Helpers
     hasNoDirection, isADayOfWeek, isAMonth, isAnHourOfDay, isAPartOfDay
   , isATimeOfDay, isDOMInteger, isDOMOrdinal, isDOMValue, isGrain
   , isGrainFinerThan, isGrainOfTime, isIntegerBetween, isNotLatent
-  , isOrdinalBetween, isMidnightOrNoon, isNumeralSafeToUse
+  , isOrdinalBetween, isMidnightOrNoon, isOkWithThisNext, isNumeralSafeToUse
     -- Production
   , cycleLastOf, cycleN, cycleNth, cycleNthAfter, dayOfMonth, dayOfWeek
-  , durationAfter, durationAgo, durationBefore, form, hour, hourMinute
-  , hourMinuteSecond, inDuration, intersect, intersectDOM, interval
+  , durationAfter, durationAgo, durationBefore, mkOkForThisNext, form, hour
+  , hourMinute, hourMinuteSecond, inDuration, intersect, intersectDOM, interval
   , inTimezone, longWEBefore, minute, minutesAfter, minutesBefore, mkLatent
   , month, monthDay, notLatent, now, nthDOWOfMonth, partOfDay, predLastOf
   , predNth, predNthAfter, second, timeOfDayAMPM, weekend, withDirection, year
   , yearMonthDay, tt
     -- Other
   , getIntValue
+  -- Rule constructors
+  , mkRuleInstants, mkRuleDaysOfWeek, mkRuleMonths, mkRuleSeasons
+  , mkRuleHolidays
   ) where
 
 import Data.Maybe
@@ -283,10 +286,6 @@ isIntegerBetween low high (Token Numeral nd) =
   TNumeral.isIntegerBetween (TNumeral.value nd) low high
 isIntegerBetween _ _ _ = False
 
-isNumeralSafeToUse :: Predicate
-isNumeralSafeToUse (Token Numeral nd) = TNumeral.okForAnyTime nd
-isNumeralSafeToUse _ = False
-
 isOrdinalBetween :: Int -> Int -> Predicate
 isOrdinalBetween low high (Token Ordinal od) =
   TOrdinal.isBetween (TOrdinal.value od) low high
@@ -301,6 +300,14 @@ isDOMInteger = isIntegerBetween 1 31
 isDOMValue :: Predicate
 isDOMValue = or . sequence [isDOMOrdinal, isDOMInteger]
 
+isNumeralSafeToUse :: Predicate
+isNumeralSafeToUse (Token Numeral nd) = TNumeral.okForAnyTime nd
+isNumeralSafeToUse _ = False
+
+isOkWithThisNext :: Predicate
+isOkWithThisNext (Token Time TimeData {TTime.okForThisNext = True}) = True
+isOkWithThisNext _ = False
+
 -- -----------------------------------------------------------------
 -- Production
 
@@ -313,7 +320,7 @@ intersect td1 td2 =
     res -> Just res
 
 intersect' :: (TimeData, TimeData) -> TimeData
-intersect' (TimeData pred1 _ g1 _ _ d1, TimeData pred2 _ g2 _ _ d2)
+intersect' (TimeData pred1 _ g1 _ _ d1 _, TimeData pred2 _ g2 _ _ d2 _)
   | g1 < g2 = TTime.timedata'
     { TTime.timePred = timeCompose pred1 pred2
     , TTime.timeGrain = g1
@@ -424,7 +431,7 @@ predNthAfter n TimeData {TTime.timePred = p, TTime.timeGrain = g} base =
     }
 
 interval' :: TTime.TimeIntervalType -> (TimeData, TimeData) -> TimeData
-interval' intervalType (TimeData p1 _ g1 _ _ _, TimeData p2 _ g2 _ _ _) =
+interval' intervalType (TimeData p1 _ g1 _ _ _ _, TimeData p2 _ g2 _ _ _ _) =
   TTime.timedata'
     { TTime.timePred = mkTimeIntervalsPredicate intervalType' p1 p2
     , TTime.timeGrain = min g1 g2
@@ -440,6 +447,9 @@ interval intervalType td1 td2 =
     TTime.TimeData { TTime.timePred = pred }
       | TTime.isEmptyPredicate pred -> Nothing
     res -> Just res
+
+mkOkForThisNext :: TimeData -> TimeData
+mkOkForThisNext td = td {TTime.okForThisNext = True}
 
 durationAgo :: DurationData -> TimeData
 durationAgo dd = inDuration $ timeNegPeriod dd
@@ -484,8 +494,8 @@ partOfDay td = form TTime.PartOfDay td
 timeOfDay :: Maybe Int -> Bool -> TimeData -> TimeData
 timeOfDay h is12H = form TTime.TimeOfDay {TTime.hours = h, TTime.is12H = is12H}
 
-timeOfDayAMPM :: TimeData -> Bool -> TimeData
-timeOfDayAMPM tod isAM = timeOfDay Nothing False $ intersect' (tod, ampm)
+timeOfDayAMPM :: Bool -> TimeData -> TimeData
+timeOfDayAMPM isAM tod = timeOfDay Nothing False $ intersect' (tod, ampm)
   where
     ampm = TTime.timedata'
            { TTime.timePred = ampmPred
@@ -540,3 +550,38 @@ minutesAfter _ _ = Nothing
 -- | Convenience helper to return a time token from a rule
 tt :: TimeData -> Maybe Token
 tt = Just . Token Time
+
+-- | Rule constructors
+mkSingleRegexRule :: Text -> String -> Maybe Token -> Rule
+mkSingleRegexRule name pattern token = Rule
+  { name = name
+  , pattern = [regex pattern]
+  , prod = const token
+  }
+
+mkRuleInstants :: [(Text, TG.Grain, Int, String)] -> [Rule]
+mkRuleInstants = map go
+  where
+    go (name, grain, n, ptn) = mkSingleRegexRule name ptn $ tt $
+      cycleNth grain n
+
+mkRuleDaysOfWeek :: [(Text, String)] -> [Rule]
+mkRuleDaysOfWeek daysOfWeek = zipWith go daysOfWeek [1..7]
+  where
+    go (name, ptn) i = mkSingleRegexRule name ptn $ tt $ dayOfWeek i
+
+mkRuleMonths :: [(Text, String)] -> [Rule]
+mkRuleMonths months  = zipWith go months [1..12]
+  where
+    go (name, ptn) i = mkSingleRegexRule name ptn $ tt $ month i
+
+mkRuleSeasons :: [(Text, String, TimeData, TimeData)] -> [Rule]
+mkRuleSeasons = map go
+  where
+    go (name, ptn, start, end) =
+      mkSingleRegexRule name ptn $ Token Time <$> interval TTime.Open start end
+
+mkRuleHolidays :: [(Text, TimeData, String)] -> [Rule]
+mkRuleHolidays = map go
+  where
+    go (name, date, ptn) = mkSingleRegexRule name ptn $ tt date

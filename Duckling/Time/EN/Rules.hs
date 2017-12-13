@@ -11,7 +11,8 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 module Duckling.Time.EN.Rules
-  ( rules ) where
+  ( rules
+  ) where
 
 import Data.Maybe
 import Data.Text (Text)
@@ -105,24 +106,15 @@ ruleAbsorbCommaTOD = Rule
       _ -> Nothing
   }
 
-instants :: [(Text, String, TG.Grain, Int)]
-instants =
-  [ ("right now", "((just|right)\\s*)now|immediately", TG.Second, 0)
-  , ("today", "todays?|(at this time)", TG.Day, 0)
-  , ("tomorrow", "(tmrw?|tomm?or?rows?)", TG.Day, 1)
-  , ("yesterday", "yesterdays?", TG.Day, - 1)
-  , ("end of month", "(the )?(EOM|end of (the )?month)", TG.Month, 1)
-  , ("end of year", "(the )?(EOY|end of (the )?year)", TG.Year, 1)
-  ]
-
 ruleInstants :: [Rule]
-ruleInstants = map go instants
-  where
-    go (name, regexPattern, grain, n) = Rule
-      { name = name
-      , pattern = [regex regexPattern]
-      , prod = \_ -> tt $ cycleNth grain n
-      }
+ruleInstants = mkRuleInstants
+  [ ("right now"    , TG.Second, 0  , "((just|right)\\s*)now|immediately")
+  , ("today"        , TG.Day   , 0  , "todays?|(at this time)"           )
+  , ("tomorrow"     , TG.Day   , 1  , "(tmrw?|tomm?or?rows?)"            )
+  , ("yesterday"    , TG.Day   , - 1, "yesterdays?"                      )
+  , ("end of month" , TG.Month , 1  , "(the )?(EOM|end of (the )?month)" )
+  , ("end of year"  , TG.Year  , 1  , "(the )?(EOY|end of (the )?year)"  )
+  ]
 
 ruleNow :: Rule
 ruleNow = Rule
@@ -150,7 +142,7 @@ ruleThisTime = Rule
   { name = "this <time>"
   , pattern =
     [ regex "this|current|coming"
-    , Predicate isNotLatent
+    , Predicate isOkWithThisNext
     ]
   , prod = \tokens -> case tokens of
       (_:Token Time td:_) -> tt $ predNth 0 False td
@@ -162,7 +154,7 @@ ruleNextTime = Rule
   { name = "next <time>"
   , pattern =
     [ regex "next"
-    , Predicate isNotLatent
+    , Predicate isOkWithThisNext
     ]
   , prod = \tokens -> case tokens of
       (_:Token Time td:_) -> tt $ predNth 0 True td
@@ -174,7 +166,7 @@ ruleLastTime = Rule
   { name = "last <time>"
   , pattern =
     [ regex "(this past|last|previous)"
-    , Predicate isNotLatent
+    , Predicate isOkWithThisNext
     ]
   , prod = \tokens -> case tokens of
       (_:Token Time td:_) -> tt $ predNth (- 1) False td
@@ -202,7 +194,7 @@ ruleTimeBeforeLastAfterNext = Rule
     ]
   , prod = \tokens -> case tokens of
       (Token Time td:Token RegexMatch (GroupMatch (match:_)):_) ->
-        tt $ predNth 1 (match == "after next") td
+        tt $ predNth 1 (Text.toLower match == "after next") td
       _ -> Nothing
   }
 
@@ -505,7 +497,7 @@ ruleHHMMLatent :: Rule
 ruleHHMMLatent = Rule
   { name = "hhmm (latent)"
   , pattern =
-    [ regex "((?:[01]?\\d)|(?:2[0-3]))([0-5]\\d)"
+    [ regex "((?:[01]?\\d)|(?:2[0-3]))([0-5]\\d)(?!.\\d)"
     ]
   , prod = \tokens -> case tokens of
       (Token RegexMatch (GroupMatch (hh:mm:_)):_) -> do
@@ -536,11 +528,46 @@ ruleMilitaryAMPM = Rule
     , regex "([ap])\\.?m?\\.?"
     ]
   , prod = \tokens -> case tokens of
-      (Token RegexMatch (GroupMatch (hh:mm:_)):Token RegexMatch (GroupMatch (ap:_)):_) -> do
+      (Token RegexMatch (GroupMatch (hh:mm:_)):
+       Token RegexMatch (GroupMatch (ap:_)):
+       _) -> do
         h <- parseInt hh
         m <- parseInt mm
-        tt . timeOfDayAMPM (hourMinute True h m) $
-          Text.toLower ap == "a"
+        tt . timeOfDayAMPM (Text.toLower ap == "a") $ hourMinute True h m
+      _ -> Nothing
+  }
+
+ruleMilitarySpelledOutAMPM :: Rule
+ruleMilitarySpelledOutAMPM = Rule
+  { name = "military spelled out numbers am|pm"
+  , pattern =
+    [ Predicate $ and . sequence [isNumeralSafeToUse, isIntegerBetween 10 12]
+    , Predicate $ and . sequence [isNumeralSafeToUse, isIntegerBetween 1 59]
+    , regex "(in the )?([ap])(\\s|\\.)?m?\\.?"
+    ]
+    , prod = \tokens -> case tokens of
+        (h:m:Token RegexMatch (GroupMatch (_:ap:_)):_) -> do
+          hh <- getIntValue h
+          mm <- getIntValue m
+          tt . timeOfDayAMPM (Text.toLower ap == "a") $ hourMinute True hh mm
+        _ -> Nothing
+  }
+
+ruleMilitarySpelledOutAMPM2 :: Rule
+ruleMilitarySpelledOutAMPM2 = Rule
+  { name = "six thirty six a.m."
+  , pattern =
+    [ Predicate $ isIntegerBetween 110 999
+    , regex "(in the )?([ap])(\\s|\\.)?m?\\.?"
+    ]
+  , prod = \tokens -> case tokens of
+      (token:Token RegexMatch (GroupMatch (_:ap:_)):_) -> do
+        n <- getIntValue token
+        m <- case mod n 100 of
+          v | v < 60 -> Just v
+          _          -> Nothing
+        let h = quot n 100
+        tt . timeOfDayAMPM (Text.toLower ap == "a") $ hourMinute True h m
       _ -> Nothing
   }
 
@@ -553,7 +580,7 @@ ruleTODAMPM = Rule
     ]
   , prod = \tokens -> case tokens of
       (Token Time td:Token RegexMatch (GroupMatch (_:ap:_)):_) ->
-        tt . timeOfDayAMPM td $ Text.toLower ap == "a"
+        tt $ timeOfDayAMPM (Text.toLower ap == "a") td
       _ -> Nothing
   }
 
@@ -705,24 +732,12 @@ ruleMMYYYY = Rule
       _ -> Nothing
   }
 
-ruleMMDDYYYY :: Rule
-ruleMMDDYYYY = Rule
-  { name = "mm/dd/yyyy"
-  , pattern =
-    [regex "(0?[1-9]|1[0-2])[/-](3[01]|[12]\\d|0?[1-9])[-/](\\d{2,4})"]
-  , prod = \tokens -> case tokens of
-      (Token RegexMatch (GroupMatch (mm:dd:yy:_)):_) -> do
-        y <- parseInt yy
-        m <- parseInt mm
-        d <- parseInt dd
-        tt $ yearMonthDay y m d
-      _ -> Nothing
-  }
-
 ruleYYYYMMDD :: Rule
 ruleYYYYMMDD = Rule
   { name = "yyyy-mm-dd"
-  , pattern = [regex "(\\d{2,4})-(0?[1-9]|1[0-2])-(3[01]|[12]\\d|0?[1-9])"]
+  , pattern =
+    [ regex "(\\d{2,4})-(0?[1-9]|1[0-2])-(3[01]|[12]\\d|0?[1-9])"
+    ]
   , prod = \tokens -> case tokens of
       (Token RegexMatch (GroupMatch (yy:mm:dd:_)):_) -> do
         y <- parseInt yy
@@ -732,25 +747,15 @@ ruleYYYYMMDD = Rule
       _ -> Nothing
   }
 
-ruleMMDD :: Rule
-ruleMMDD = Rule
-  { name = "mm/dd"
-  , pattern = [regex "(0?[1-9]|1[0-2])\\s?[/-]\\s?(3[01]|[12]\\d|0?[1-9])"]
-  , prod = \tokens -> case tokens of
-      (Token RegexMatch (GroupMatch (mm:dd:_)):_) -> do
-        m <- parseInt mm
-        d <- parseInt dd
-        tt $ monthDay m d
-      _ -> Nothing
-  }
-
 ruleNoonMidnightEOD :: Rule
 ruleNoonMidnightEOD = Rule
   { name = "noon|midnight|EOD|end of day"
-  , pattern = [regex "(noon|midni(ght|te)|(the )?(EOD|end of (the )?day))"]
+  , pattern =
+    [ regex "(noon|midni(ght|te)|(the )?(EOD|end of (the )?day))"
+    ]
   , prod = \tokens -> case tokens of
       (Token RegexMatch (GroupMatch (match:_)):_) -> tt . hour False $
-        if match == "noon" then 12 else 0
+        if Text.toLower match == "noon" then 12 else 0
       _ -> Nothing
   }
 
@@ -870,13 +875,15 @@ ruleWeekend = Rule
   , pattern =
     [ regex "(week(\\s|-)?end|wkend)s?"
     ]
-  , prod = \_ -> tt weekend
+  , prod = \_ -> tt $ mkOkForThisNext weekend
   }
 
 ruleSeasons :: Rule
 ruleSeasons = Rule
   { name = "seasons"
-  , pattern = [regex "(summer|fall|autumn|winter|spring)"]
+  , pattern =
+    [ regex "(summer|fall|autumn|winter|spring)"
+    ]
   , prod = \tokens -> case tokens of
       (Token RegexMatch (GroupMatch (match:_)):_) -> do
         start <- case Text.toLower match of
@@ -893,9 +900,8 @@ ruleSeasons = Rule
           "winter" -> Just $ monthDay 3 20
           "spring" -> Just $ monthDay 6 21
           _ -> Nothing
-        Token Time <$> interval TTime.Open start end
+        Token Time <$> mkOkForThisNext <$> interval TTime.Open start end
       _ -> Nothing
-
   }
 
 ruleTODPrecision :: Rule
@@ -1108,7 +1114,7 @@ ruleIntervalTODAMPM = Rule
              Just m -> hourMinute True h m
              Nothing -> hour True h
        Token Time <$>
-         interval TTime.Closed (timeOfDayAMPM td1 ampm) (timeOfDayAMPM td2 ampm)
+         interval TTime.Closed (timeOfDayAMPM ampm td1) (timeOfDayAMPM ampm td2)
      _ -> Nothing
  }
 
@@ -1206,7 +1212,7 @@ ruleDaysOfWeek = zipWith go daysOfWeek [1..7]
     go (name, regexPattern) i = Rule
       { name = name
       , pattern = [regex regexPattern]
-      , prod = \_ -> tt $ dayOfWeek i
+      , prod = \_ -> tt . mkOkForThisNext $ dayOfWeek i
       }
 
 months :: [(Text, String)]
@@ -1231,7 +1237,7 @@ ruleMonths = zipWith go months [1..12]
     go (name, regexPattern) i = Rule
       { name = name
       , pattern = [regex regexPattern]
-      , prod = \_ -> tt $ month i
+      , prod = \_ -> tt . mkOkForThisNext $ month i
       }
 
 rulePartOfMonth :: Rule
@@ -1273,7 +1279,7 @@ ruleUSHolidays = map go usHolidays
     go (name, regexPattern, m, d) = Rule
       { name = name
       , pattern = [regex regexPattern]
-      , prod = \_ -> tt $ monthDay m d
+      , prod = \_ -> tt . mkOkForThisNext $ monthDay m d
       }
 
 moreUSHolidays :: [(Text, String, Int, Int, Int)]
@@ -1290,10 +1296,6 @@ moreUSHolidays =
     , "mother'?s?'? day"
     , 2, 7, 5
     )
-  , ( "Thanksgiving Day" -- Fourth Thursday of November
-    , "thanks?giving( day)?"
-    , 4, 4, 11
-    )
   ,  ( "Labor Day" -- First Monday of September
      , "labor day"
      , 1, 1, 9
@@ -1306,7 +1308,7 @@ ruleMoreUSHolidays = map go moreUSHolidays
     go (name, regexPattern, n, dow, m) = Rule
       { name = name
       , pattern = [regex regexPattern]
-      , prod = \_ -> tt $ nthDOWOfMonth n dow m
+      , prod = \_ -> tt . mkOkForThisNext $ nthDOWOfMonth n dow m
       }
 
 -- The day after Thanksgiving (not always the fourth Friday of November)
@@ -1316,32 +1318,39 @@ ruleBlackFriday = Rule
   , pattern =
     [ regex "black frid?day"
     ]
-  , prod = \_ -> tt . cycleNthAfter False TG.Day 1 $ nthDOWOfMonth 4 4 11
+  , prod = \_ ->
+      tt . mkOkForThisNext . cycleNthAfter False TG.Day 1 $ nthDOWOfMonth 4 4 11
   }
 
 -- Last Monday of May
 ruleMemorialDay :: Rule
 ruleMemorialDay = Rule
   { name = "Memorial Day"
-  , pattern = [regex "memorial day"]
-  , prod = \_ -> tt $ predLastOf (dayOfWeek 1) (month 5)
+  , pattern =
+    [ regex "memorial day"
+    ]
+  , prod = \_ -> tt . mkOkForThisNext $ predLastOf (dayOfWeek 1) (month 5)
   }
 
 -- Long weekend before the last Monday of May
 ruleMemorialDayWeekend :: Rule
 ruleMemorialDayWeekend = Rule
   { name = "Memorial Day Weekend"
-  , pattern = [regex "memorial day week(\\s|-)?ends?"]
+  , pattern =
+    [ regex "memorial day week(\\s|-)?ends?"
+    ]
   , prod = \_ ->
-      tt . longWEBefore $ predLastOf (dayOfWeek 1) (month 5)
+      tt . mkOkForThisNext . longWEBefore $ predLastOf (dayOfWeek 1) (month 5)
   }
 
 -- Long weekend before the first Monday of September
 ruleLaborDayWeekend :: Rule
 ruleLaborDayWeekend = Rule
   { name = "Labor Day weekend"
-  , pattern = [regex "labor day week(\\s|-)?ends?"]
-  , prod = \_ -> tt . longWEBefore $ nthDOWOfMonth 1 1 9
+  , pattern =
+    [ regex "labor day week(\\s|-)?ends?"
+    ]
+  , prod = \_ -> tt . mkOkForThisNext . longWEBefore $ nthDOWOfMonth 1 1 9
   }
 
 ruleCycleThisLastNext :: Rule
@@ -1381,7 +1390,7 @@ ruleCycleTheAfterBeforeTime = Rule
        : Token RegexMatch (GroupMatch (match:_))
        : Token Time td
        : _) ->
-        let n = if match == "after" then 1 else - 1 in
+        let n = if Text.toLower match == "after" then 1 else - 1 in
           tt $ cycleNthAfter False grain n td
       _ -> Nothing
   }
@@ -1395,8 +1404,11 @@ ruleCycleAfterBeforeTime = Rule
     , dimension Time
     ]
   , prod = \tokens -> case tokens of
-      (Token TimeGrain grain:Token RegexMatch (GroupMatch (match:_)):Token Time td:_) ->
-        let n = if match == "after" then 1 else - 1 in
+      (Token TimeGrain grain:
+       Token RegexMatch (GroupMatch (match:_)):
+       Token Time td:
+       _) ->
+        let n = if Text.toLower match == "after" then 1 else - 1 in
           tt $ cycleNthAfter False grain n td
       _ -> Nothing
   }
@@ -1410,9 +1422,12 @@ ruleCycleLastNextN = Rule
     , dimension TimeGrain
     ]
   , prod = \tokens -> case tokens of
-      (Token RegexMatch (GroupMatch (match:_)):token:Token TimeGrain grain:_) -> do
+      (Token RegexMatch (GroupMatch (match:_)):
+       token:
+       Token TimeGrain grain:
+       _) -> do
         n <- getIntValue token
-        tt . cycleN True grain $ if match == "next" then n else - n
+        tt . cycleN True grain $ if Text.toLower match == "next" then n else - n
       _ -> Nothing
   }
 
@@ -1556,9 +1571,9 @@ ruleDurationInWithinAfter = Rule
        _) -> case Text.toLower match of
          "within" -> Token Time <$>
            interval TTime.Open (cycleNth TG.Second 0) (inDuration dd)
-         "after" -> tt . withDirection TTime.After $ inDuration dd
-         "in" -> tt $ inDuration dd
-         _ -> Nothing
+         "after"  -> tt . withDirection TTime.After $ inDuration dd
+         "in"     -> tt $ inDuration dd
+         _        -> Nothing
       _ -> Nothing
   }
 
@@ -1574,7 +1589,7 @@ ruleDurationHenceAgo = Rule
        Token RegexMatch (GroupMatch (match:_)):
        _) -> case Text.toLower match of
         "ago" -> tt $ durationAgo dd
-        _ -> tt $ inDuration dd
+        _     -> tt $ inDuration dd
       _ -> Nothing
   }
 
@@ -1647,8 +1662,8 @@ rules =
   , ruleAbsorbInMonth
   , ruleAbsorbCommaTOD
   , ruleNextDOW
-  , ruleThisTime
   , ruleNextTime
+  , ruleThisTime
   , ruleLastTime
   , ruleTimeBeforeLastAfterNext
   , ruleLastDOWOfTime
@@ -1677,6 +1692,8 @@ rules =
   , ruleHHMMLatent
   , ruleHHMMSS
   , ruleMilitaryAMPM
+  , ruleMilitarySpelledOutAMPM
+  , ruleMilitarySpelledOutAMPM2
   , ruleTODAMPM
   , ruleHONumeral
   , ruleHODHalf
@@ -1688,9 +1705,7 @@ rules =
   , ruleHalfAfterHOD
   , ruleQuarterAfterHOD
   , ruleHalfHOD
-  , ruleMMDDYYYY
   , ruleYYYYMMDD
-  , ruleMMDD
   , ruleMMYYYY
   , ruleNoonMidnightEOD
   , rulePartOfDays
