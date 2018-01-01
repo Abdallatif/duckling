@@ -406,6 +406,8 @@ library
                      , Duckling.PhoneNumber.Types
 
                      -- Quantity
+                     , Duckling.Quantity.AR.Corpus
+                     , Duckling.Quantity.AR.Rules
                      , Duckling.Quantity.EN.Corpus
                      , Duckling.Quantity.EN.Rules
                      , Duckling.Quantity.FR.Corpus
@@ -427,6 +429,8 @@ library
                      , Duckling.Regex.Types
 
                      -- Temperature
+                     , Duckling.Temperature.AR.Corpus
+                     , Duckling.Temperature.AR.Rules
                      , Duckling.Temperature.EN.Corpus
                      , Duckling.Temperature.EN.Rules
                      , Duckling.Temperature.ES.Corpus
@@ -570,6 +574,8 @@ library
                      , Duckling.Url.Types
 
                      -- Volume
+                     , Duckling.Volume.AR.Corpus
+                     , Duckling.Volume.AR.Rules
                      , Duckling.Volume.EN.Corpus
                      , Duckling.Volume.EN.Rules
                      , Duckling.Volume.ES.Corpus
@@ -767,6 +773,7 @@ test-suite duckling-test
                      , Duckling.PhoneNumber.Tests
 
                      -- Quantity
+                     , Duckling.Quantity.AR.Tests
                      , Duckling.Quantity.EN.Tests
                      , Duckling.Quantity.FR.Tests
                      , Duckling.Quantity.HR.Tests
@@ -777,6 +784,7 @@ test-suite duckling-test
                      , Duckling.Quantity.Tests
 
                      -- Temperature
+                     , Duckling.Temperature.AR.Tests
                      , Duckling.Temperature.EN.Tests
                      , Duckling.Temperature.ES.Tests
                      , Duckling.Temperature.FR.Tests
@@ -819,6 +827,7 @@ test-suite duckling-test
                      , Duckling.Url.Tests
 
                      -- Volume
+                     , Duckling.Volume.AR.Tests
                      , Duckling.Volume.EN.Tests
                      , Duckling.Volume.ES.Tests
                      , Duckling.Volume.FR.Tests

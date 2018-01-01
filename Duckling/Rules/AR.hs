@@ -21,8 +21,11 @@ import Duckling.Types
 import qualified Duckling.Duration.AR.Rules as Duration
 import qualified Duckling.Numeral.AR.Rules as Numeral
 import qualified Duckling.Ordinal.AR.Rules as Ordinal
+import qualified Duckling.Quantity.AR.Rules as Quantity
+import qualified Duckling.Temperature.AR.Rules as Temperature
 import qualified Duckling.Time.AR.Rules as Time
 import qualified Duckling.TimeGrain.AR.Rules as TimeGrain
+import qualified Duckling.Volume.AR.Rules as Volume
 
 defaultRules :: Some Dimension -> [Rule]
 defaultRules = langRules
@@ -38,10 +41,10 @@ langRules (This Email) = []
 langRules (This Numeral) = Numeral.rules
 langRules (This Ordinal) = Ordinal.rules
 langRules (This PhoneNumber) = []
-langRules (This Quantity) = []
+langRules (This Quantity) = Quantity.rules
 langRules (This RegexMatch) = []
-langRules (This Temperature) = []
+langRules (This Temperature) = Temperature.rules
 langRules (This Time) = Time.rules
 langRules (This TimeGrain) = TimeGrain.rules
 langRules (This Url) = []
-langRules (This Volume) = []
+langRules (This Volume) = Volume.rules
